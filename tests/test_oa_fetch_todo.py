@@ -152,3 +152,27 @@ def test_write_reports_creates_dir_if_missing(tmp_cwd, mock_items):
     )
     assert os.path.exists(nested)
     assert os.path.exists(json_path)
+
+
+# ---- do_oa_fetch_todo method integration test ----
+
+def test_do_oa_fetch_todo_dry_run_returns_filtered_items(tmp_cwd, mock_items):
+    """In dry-run, do_oa_fetch_todo should use fixture, filter, write report, return dict."""
+    from ga import GenericAgentHandler
+    handler = GenericAgentHandler(parent=None, cwd=str(tmp_cwd))
+    gen = handler.do_oa_fetch_todo(
+        {'initiator': '管紫妍', 'limit': 20, '_index': 0, '_tool_num': 1},
+        response=None,
+    )
+    # drain generator
+    for _ in gen:
+        pass
+    # The last yielded value is a StepOutcome (generator returns it)
+    # In this test we just verify side effects
+    json_files = [f for f in os.listdir(str(tmp_cwd)) if f.startswith('oa_fetch_') and f.endswith('.json')]
+    assert len(json_files) == 1
+    with open(os.path.join(str(tmp_cwd), json_files[0]), 'r', encoding='utf-8') as f:
+        payload = json.load(f)
+    assert payload['filtered_count'] == 5
+    assert payload['raw_count'] == 8
+    assert payload['filters_applied']['initiator'] == '管紫妍'

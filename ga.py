@@ -483,7 +483,101 @@ class GenericAgentHandler(BaseHandler):
         except Exception as e:
             yield f"[Status] ❌ 写入异常: {str(e)}\n"
             return StepOutcome({"status": "error", "msg": str(e)}, next_prompt="\n")
-        
+
+    def do_oa_fetch_todo(self, args, response):
+        """获取OA待办中 IT系统账号管理 分类下的新增邮箱申请明细。
+
+        支持按发起人/公司/部门/异常过滤, 返回结构化数据 + 写双份报告 (JSON + TXT)。
+
+        Args (from LLM):
+            limit:          int, default 20 — 最多抓取条数
+            initiator:      str, default '' — 发起人过滤(子串)
+            company:        str, default '' — 公司过滤(子串)
+            dept:           str, default '' — 部门过滤(子串)
+            email_required: bool, default True — 仅保留邮箱勾选
+            anomalies_only: bool, default False — 仅保留异常行
+            report_dir:     str, default './' — 报告目录(相对 cwd)
+            cdp_url:        str, default 'http://localhost:9222'
+
+        Returns:
+            StepOutcome with dict: {count, items, json_path, txt_path, filters_applied, elapsed_sec}
+        """
+        import time as _t
+        import sys as _sys
+
+        # 临时把 memory/ 加进 sys.path, 使 oa_email_apply_skill 可被 import
+        _mem_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'memory')
+        if _mem_dir not in _sys.path:
+            _sys.path.insert(0, _mem_dir)
+
+        limit          = int(args.get('limit', 20))
+        initiator      = (args.get('initiator') or '').strip()
+        company        = (args.get('company') or '').strip()
+        dept           = (args.get('dept') or '').strip()
+        email_required = bool(args.get('email_required', True))
+        anomalies_only = bool(args.get('anomalies_only', False))
+        report_dir     = self._get_abs_path(args.get('report_dir', './'))
+        cdp_url        = args.get('cdp_url', 'http://localhost:9222')
+
+        t0 = _t.time()
+
+        # 1. 拉数据 (CDP or dry-run fixture)
+        try:
+            if os.environ.get('OA_DRY_RUN') == '1':
+                from oa_email_apply_skill import extract_new_email_applications as _real_fn
+                # In dry-run we read from fixture instead of CDP
+                fixture = os.path.join(os.path.dirname(__file__), 'tests', 'fixtures', 'oa_fetch_mock.json')
+                if os.path.isfile(fixture):
+                    raw = json.load(open(fixture, 'r', encoding='utf-8'))
+                else:
+                    raw, _ = _real_fn(limit=limit, report=False, cdp_url=cdp_url)
+            else:
+                from oa_email_apply_skill import extract_new_email_applications
+                raw, _ = extract_new_email_applications(limit=limit, report=False, cdp_url=cdp_url)
+        except ImportError:
+            err = "oa_email_apply_skill 未找到, 请确认 memory/ 已在 sys.path"
+            yield f"[Error] {err}\n"
+            return StepOutcome({'err': err}, next_prompt="\n")
+        except Exception as e:
+            err = f"OA 抓取失败: {e}"
+            yield f"[Error] {err}\n"
+            return StepOutcome({'err': err, 'hint': '检查 Chrome CDP / OA 登录态 / listDoing 页'},
+                               next_prompt="\n")
+
+        # 2. Python 端后置过滤
+        items = _filter_oa_items(
+            raw,
+            initiator=initiator, company=company, dept=dept,
+            email_required=email_required, anomalies_only=anomalies_only,
+        )
+        filters_applied = {
+            'limit': limit, 'initiator': initiator, 'company': company,
+            'dept': dept, 'email_required': email_required,
+            'anomalies_only': anomalies_only,
+        }
+
+        # 3. 写双份报告
+        ts = _t.strftime('%Y%m%d_%H%M%S')
+        try:
+            json_path, txt_path = _write_oa_reports(
+                report_dir=report_dir, raw=raw, items=items,
+                filters_applied=filters_applied, ts=ts,
+            )
+        except OSError as e:
+            yield f"[Warn] 报告写入失败: {e}, 但内存 items 仍可用\n"
+            json_path = txt_path = None
+
+        elapsed = round(_t.time() - t0, 1)
+        yield f"[Info] 抓到 {len(raw)} 条, 过滤后 {len(items)} 条, 报告 → {json_path}\n"
+        return StepOutcome({
+            'count': len(items),
+            'items': items,
+            'json_path': json_path,
+            'txt_path':  txt_path,
+            'filters_applied': filters_applied,
+            'elapsed_sec': elapsed,
+        }, next_prompt=self._get_anchor_prompt(skip=args.get('_index', 0) > 0))
+
     def do_file_read(self, args, response):
         '''读取文件内容。从第start行开始读取。如有keyword则返回第一个keyword(忽略大小写)周边内容'''
         path = self._get_abs_path(args.get("path", ""))
