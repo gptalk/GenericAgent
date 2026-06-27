@@ -69,5 +69,19 @@
     "name": "start_long_term_update",
     "description": "Start distilling long-term memory. Call when discovering info worth remembering (env facts/user prefs/lessons learned). Skip if memory already updated or in autonomous flow. Must call when a task that took 15+ turns is completed",
     "parameters": {"type": "object", "properties": {}}}
-  }
+  },
+  {"type": "function", "function": {
+    "name": "oa_fetch_todo",
+    "description": "获取OA待办中 IT系统账号管理 分类下的新增邮箱申请明细。支持按发起人/公司/部门/异常过滤, 返回结构化数据 + 写双份报告 (JSON + TXT)。前置: Chrome 启动 --remote-debugging-port=9222, 已在OA listDoing页登录。设置 OA_DRY_RUN=1 环境变量可用 mock fixture 跳过 CDP (CI/无 Chrome 环境)。",
+    "parameters": {"type": "object", "properties": {
+      "limit":          {"type": "integer", "default": 20, "description": "最多抓取条数"},
+      "initiator":      {"type": "string",  "default": "",  "description": "发起人过滤(子串匹配)"},
+      "company":        {"type": "string",  "default": "",  "description": "公司过滤(子串匹配)"},
+      "dept":           {"type": "string",  "default": "",  "description": "部门过滤(子串匹配)"},
+      "email_required": {"type": "boolean", "default": true, "description": "仅保留邮箱勾选的申请"},
+      "anomalies_only": {"type": "boolean", "default": false,"description": "仅保留异常行 (工号/电话/邮箱勾选异常)"},
+      "report_dir":     {"type": "string",  "default": "./", "description": "报告目录(相对 cwd)"},
+      "cdp_url":        {"type": "string",  "default": "http://localhost:9222", "description": "Chrome DevTools 端点"}
+    }}
+  }}
 ]
