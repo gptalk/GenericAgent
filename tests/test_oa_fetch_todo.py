@@ -83,7 +83,7 @@ def test_filter_empty_input(mock_items):
 
 def test_write_reports_creates_json_and_txt(tmp_cwd, mock_items):
     """_write_oa_reports should create both .json and .txt files."""
-    from ga import _write_oa_reports
+    from ga import _filter_oa_items, _write_oa_reports
     items = _filter_oa_items(mock_items, initiator='管紫妍')
     json_path, txt_path = _write_oa_reports(
         report_dir=str(tmp_cwd),
@@ -100,7 +100,7 @@ def test_write_reports_creates_json_and_txt(tmp_cwd, mock_items):
 
 def test_write_reports_json_payload_structure(tmp_cwd, mock_items):
     """JSON file should contain fetched_at, raw_count, filtered_count, items, filters_applied."""
-    from ga import _write_oa_reports
+    from ga import _filter_oa_items, _write_oa_reports
     items = _filter_oa_items(mock_items, dept='质管部')
     json_path, _ = _write_oa_reports(
         report_dir=str(tmp_cwd),

@@ -291,6 +291,56 @@ def _filter_oa_items(items, *, initiator='', company='', dept='', email_required
         out.append(r)
     return out
 
+def _write_oa_reports(*, report_dir, raw, items, filters_applied, ts):
+    """Write dual report (JSON + TXT) for oa_fetch_todo. Returns (json_path, txt_path).
+
+    Args:
+        report_dir:      str, absolute directory (will be created if missing)
+        raw:             list[dict], all items before filtering (for raw_count)
+        items:           list[dict], items after filtering
+        filters_applied: dict, the filter values used (for reproducibility)
+        ts:              str, timestamp suffix like '20260627_180000'
+
+    Returns:
+        (json_path, txt_path) tuple. Paths are absolute.
+    """
+    os.makedirs(report_dir, exist_ok=True)
+    json_path = os.path.join(report_dir, f'oa_fetch_{ts}.json')
+    txt_path = os.path.join(report_dir, f'oa_fetch_{ts}.txt')
+
+    # JSON payload
+    payload = {
+        'fetched_at':     ts,
+        'raw_count':      len(raw),
+        'filtered_count': len(items),
+        'filters_applied': filters_applied,
+        'items':          items,
+    }
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    # TXT report
+    with open(txt_path, 'w', encoding='utf-8') as f:
+        f.write(f"# OA 待办 新增邮箱申请 ({ts})\n")
+        f.write(f"原始 {len(raw)} 条 → 过滤后 {len(items)} 条\n")
+        f.write(f"过滤: {json.dumps(filters_applied, ensure_ascii=False)}\n\n")
+        f.write("| RequestID | 发起人 | 被申请人 | 工号 | 电话 | 公司 | 部门 | 邮箱 | 异常 |\n")
+        f.write("|---|---|---|---|---|---|---|---|---|\n")
+        for r in items:
+            f.write(
+                f"| {r.get('requestid','')} | {r.get('发起申请人','')} | {r.get('被申请人姓名','')} "
+                f"| {r.get('工号','')} | {r.get('移动电话','')} | {r.get('公司','')} "
+                f"| {r.get('部门','')} | {'✅' if r.get('邮箱勾选') else '❌'} "
+                f"| {r.get('异常','')} |\n"
+            )
+        anomalies = [r for r in items if r.get('异常')]
+        if anomalies:
+            f.write("\n## 异常清单\n")
+            for r in anomalies:
+                f.write(f"- {r.get('被申请人姓名')}({r.get('requestid')}): {r.get('异常')}\n")
+
+    return json_path, txt_path
+
 class GenericAgentHandler(BaseHandler):
     '''Generic Agent 工具库，包含多种工具的实现。工具函数自动加上了 do_ 前缀。实际工具名没有前缀。'''
     def __init__(self, parent, last_history=None, cwd='./temp'):
