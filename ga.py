@@ -257,10 +257,39 @@ def smart_format(data, max_str_len=100, omit_str=' ... '):
     return f"{data[:max_str_len//2]}{omit_str}{data[-max_str_len//2:]}"
 
 def consume_file(dr, file):
-    if dr and os.path.exists(os.path.join(dr, file)): 
+    if dr and os.path.exists(os.path.join(dr, file)):
         with open(os.path.join(dr, file), encoding='utf-8', errors='replace') as f: content = f.read()
         os.remove(os.path.join(dr, file))
         return content
+
+def _filter_oa_items(items, *, initiator='', company='', dept='', email_required=True, anomalies_only=False):
+    """Filter OA todo items by various criteria. Pure function, no side effects.
+
+    Args:
+        items:           list of dict (each = one OA todo row)
+        initiator:       str, substring match on 发起申请人; '' = no filter
+        company:         str, substring match on 公司; '' = no filter
+        dept:            str, substring match on 部门; '' = no filter
+        email_required:  bool, if True keep only rows with 邮箱勾选 == True
+        anomalies_only:  bool, if True keep only rows with non-empty 异常
+
+    Returns:
+        filtered list of dict (subset of items, in original order)
+    """
+    out = []
+    for r in items:
+        if initiator and initiator not in (r.get('发起申请人') or ''):
+            continue
+        if company and company not in (r.get('公司') or ''):
+            continue
+        if dept and dept not in (r.get('部门') or ''):
+            continue
+        if email_required and not r.get('邮箱勾选'):
+            continue
+        if anomalies_only and not r.get('异常'):
+            continue
+        out.append(r)
+    return out
 
 class GenericAgentHandler(BaseHandler):
     '''Generic Agent 工具库，包含多种工具的实现。工具函数自动加上了 do_ 前缀。实际工具名没有前缀。'''
